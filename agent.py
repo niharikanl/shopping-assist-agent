@@ -103,6 +103,13 @@ COMPARISON RULES:
 5. Give a recommendation based only on supported catalog information.
 
 Respond clearly and naturally.
+12. When comparing two or more products, present the
+    comparison in a clear Markdown table.
+13. Include product name, price, processor, RAM,
+    storage, display, and rating when available.
+14. After the table, explain the key differences
+    and calculate the price difference accurately.
+15. Use only information returned by the product tool.
 """
 
         for attempt in range(3):
