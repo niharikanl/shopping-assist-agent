@@ -26,19 +26,15 @@ def search_products(
 
     for product in products:
 
-        # Filter by category
         if category and product["category"].lower() != category.lower():
             continue
 
-        # Filter by maximum budget
         if max_budget is not None and product["price"] > max_budget:
             continue
 
-        # Filter by minimum rating
         if min_rating is not None and product["rating"] < min_rating:
             continue
 
-        # Filter unavailable products
         if in_stock_only and not product["in_stock"]:
             continue
 
@@ -52,7 +48,7 @@ def search_products(
 
 
 def compare_products(products):
-    """Compare products based on price and rating."""
+    """Prepare product details for comparison."""
 
     if len(products) < 2:
         return "At least two products are required for comparison."
@@ -71,98 +67,83 @@ def compare_products(products):
 
 
 def filter_by_requirements(products, requirements):
-    """
-    Filter products by maximum price and minimum specifications.
-    Supports values such as 16GB RAM and 512GB SSD.
-    """
+    """Filter products using budget, category and minimum specifications."""
 
     results = []
 
+    # Support different argument names returned by Gemini.
+    aliases = {
+        "price_max": "max_price",
+        "budget": "max_price",
+        "ram_min": "min_ram",
+        "ram_gb": "min_ram",
+        "min_ram_gb": "min_ram",
+        "storage_min": "min_storage",
+        "storage_gb": "min_storage",
+        "min_storage_gb": "min_storage"
+    }
+
+    normalized = {}
+
+    for key, value in requirements.items():
+        normalized[aliases.get(key, key)] = value
+
     for product in products:
-        specifications = product.get("specifications", {})
+        specs = product.get("specifications", {})
         matches = True
 
-        for key, required_value in requirements.items():
-
-            # Purpose is recommendation context, not a specification.
-            if key == "purpose":
+        # Category is stored at the product's top level.
+        category = normalized.get("category")
+        if category:
+            if product.get("category", "").lower() != str(category).lower():
                 continue
 
-            # Check the maximum product price.
-            if key == "max_price":
-                price = product.get("price")
-
-                try:
-                    if price is None or float(price) > float(required_value):
-                        matches = False
-                        break
-                except (TypeError, ValueError):
-                    matches = False
-                    break
-
+        # Check maximum price.
+        max_price = normalized.get("max_price")
+        if max_price is not None:
+            if product.get("price", float("inf")) > float(max_price):
                 continue
 
-            # Map requirement names to catalog specification keys.
-            spec_key = {
-                "min_ram": "ram",
-                "min_ram_gb": "ram",
-                "ram_gb": "ram",
-                "min_storage": "storage",
-                "min_storage_gb": "storage",
-                "storage_gb": "storage"
-            }.get(key, key)
+        # Check minimum RAM.
+        min_ram = normalized.get("min_ram")
+        if min_ram is not None:
+            import re
+            ram_match = re.search(r"\d+", str(specs.get("ram", "")))
 
-            actual_value = specifications.get(spec_key)
+            if not ram_match or int(ram_match.group()) < float(min_ram):
+                continue
 
-            if actual_value is None:
+        # Check minimum storage.
+        min_storage = normalized.get("min_storage")
+        if min_storage is not None:
+            import re
+            storage_match = re.search(
+                r"(\d+(?:\.\d+)?)\s*(TB|GB)",
+                str(specs.get("storage", "")),
+                re.IGNORECASE
+            )
+
+            if not storage_match:
+                continue
+
+            amount = float(storage_match.group(1))
+            unit = storage_match.group(2).upper()
+
+            storage_gb = amount * 1024 if unit == "TB" else amount
+
+            if storage_gb < float(min_storage):
+                continue
+
+        # Check other text-based requirements.
+        for key, value in normalized.items():
+            if key in ("category", "max_price", "min_ram", "min_storage", "purpose"):
+                continue
+
+            actual = specs.get(key)
+
+            if actual is None or str(value).lower() not in str(actual).lower():
                 matches = False
                 break
-
-            # Numeric requirements represent minimum values.
-            if isinstance(required_value, (int, float)):
-
-                if spec_key == "storage":
-                    storage_match = re.search(
-                        r"(\d+(?:\.\d+)?)\s*(TB|GB)",
-                        str(actual_value),
-                        re.IGNORECASE
-                    )
-
-                    if not storage_match:
-                        matches = False
-                        break
-
-                    storage_number = float(storage_match.group(1))
-                    storage_unit = storage_match.group(2).upper()
-
-                    # Convert TB to GB for a consistent comparison.
-                    actual_number = (
-                        storage_number * 1024
-                        if storage_unit == "TB"
-                        else storage_number
-                    )
-
-                else:
-                    number_match = re.search(
-                        r"\d+(?:\.\d+)?",
-                        str(actual_value)
-                    )
-
-                    if not number_match:
-                        matches = False
-                        break
-
-                    actual_number = float(number_match.group())
-
-                if actual_number < float(required_value):
-                    matches = False
-                    break
-
-            # Text requirements must match the catalog value.
-            else:
-                if str(required_value).lower() not in str(actual_value).lower():
-                    matches = False
-                    break
 
         if matches:
             results.append(product)
